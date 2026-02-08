@@ -1,14 +1,12 @@
 name: Build IPA
-
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:   # 允许手动触发
+  workflow_dispatch: # 允许手动触发
 
 jobs:
   build:
-    runs-on: macos-14   # 最新的 macOS runner，Xcode 16+
-
+    runs-on: macos-14 # 最新的 macOS runner，Xcode 16+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -19,10 +17,10 @@ jobs:
         ruby-version: '3.3'
         bundler-cache: true
 
-    - name: Install dependencies
-      run: |
-        gem install fastlane
-        cd ios   # 如果你的 Xcode 项目在 ios 文件夹下，调整路径；如果是根目录就删掉这行
+    - name: Install Fastlane
+      run: gem install fastlane
+      # 移除了 cd ios，因为你的项目很可能在根目录（cd ios 导致了错误）
+      # 如果你的项目确实在 ios/ 文件夹下，请把下面的 Build 步骤加上 working-directory: ios
 
     - name: Import Certificate & Profile
       env:
@@ -31,41 +29,52 @@ jobs:
         APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
       run: |
-        # 创建临时目录存放证书
         mkdir -p ~/private_keys
-
-        # 写入 p12 证书
+        
+        # 写入 p12 证书（请确认你的证书文件名，通常是 distribution.p12 或类似，如果是 AuthKey 请保留）
         echo "$APPLE_CERTIFICATE" | base64 --decode > ~/private_keys/AuthKey.p12
-
-        # 写入 mobileprovision
-        echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning Profiles/myprofile.mobileprovision
-
-        # 安装证书
+        
+        # 写入 mobileprovision（文件名可以自定义，路径必须是这个）
+        echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/myprofile.mobileprovision
+        
+        # 创建并设置自定义 keychain
         security create-keychain -p "" build.keychain
         security default-keychain -s build.keychain
         security unlock-keychain -p "" build.keychain
         security import ~/private_keys/AuthKey.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-
-        # 设置签名权限
         security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
 
     - name: Build IPA with Fastlane
       env:
         MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       run: |
-        fastlane init   # 只跑一次，之后可以注释掉
+        # fastlane init 只需运行一次，第一次成功后请注释掉这行，防止每次覆盖
+        # fastlane init
+        
+        # 创建或覆盖 Fastfile
+        mkdir -p fastlane
         cat << EOF > fastlane/Fastfile
-        lane :build do
-          gym(
-            scheme: "YourAppName",   # 替换成你的 Scheme 名称（Xcode 左上角那个）
-            export_method: "ad-hoc", # 或 "development"，ad-hoc 可以安装到注册的设备
-            output_directory: "./build",
-            output_name: "Date114.ipa"
-          )
+        default_platform(:ios)
+
+        platform :ios do
+          lane :build do
+            gym(
+              scheme: "Runner",                  # ← 重要：替换成你的实际 Scheme 名称！
+              # Flutter 项目通常是 "Runner"
+              # 纯原生项目在 Xcode 左上角查看 Scheme 名
+              export_method: "ad-hoc",           # ad-hoc / app-store / development / enterprise
+              output_directory: "./build",
+              output_name: "Date114.ipa",
+              clean: true
+            )
+          end
         end
         EOF
-
+        
+        # 执行构建
         fastlane build
+      # 如果你的 .xcodeproj 或 .xcworkspace 在 ios/ 文件夹下，请取消下面这行的注释
+      # working-directory: ios
 
     - name: Upload IPA Artifact
       uses: actions/upload-artifact@v4
