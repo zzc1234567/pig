@@ -1,7 +1,7 @@
 name: Build IPA
-on:
+于:
   push:
-    branches: [ main ]
+    分支: [ main ]
   workflow_dispatch: # 允许手动触发
 
 jobs:
@@ -28,21 +28,6 @@ jobs:
         APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
         APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-      run: |
-        mkdir -p ~/private_keys
-        
-        # 写入 p12 证书（请确认你的证书文件名，通常是 distribution.p12 或类似，如果是 AuthKey 请保留）
-        echo "$APPLE_CERTIFICATE" | base64 --decode > ~/private_keys/AuthKey.p12
-        
-        # 写入 mobileprovision（文件名可以自定义，路径必须是这个）
-        echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/myprofile.mobileprovision
-        
-        # 创建并设置自定义 keychain
-        security create-keychain -p "" build.keychain
-        security default-keychain -s build.keychain
-        security unlock-keychain -p "" build.keychain
-        security import ~/private_keys/AuthKey.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-        security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
 
     - name: Build IPA with Fastlane
       env:
